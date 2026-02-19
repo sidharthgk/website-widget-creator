@@ -10,7 +10,7 @@ export default defineConfig({
       name: 'proxy-middleware',
       configureServer(server) {
         server.middlewares.use(
-          '/fetch-site',
+          '/api/fetch-site',
           async (req: IncomingMessage, res: ServerResponse) => {
             const rawUrl = new URL(req.url ?? '', 'http://localhost').searchParams.get('url')
             if (!rawUrl) {

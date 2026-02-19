@@ -201,8 +201,8 @@ function PreviewScreen({ siteUrl }: { siteUrl: string }) {
   const [iframeLoaded, setIframeLoaded] = useState(false)
   const [iframeError, setIframeError] = useState(false)
 
-  // Route through our server-side proxy so X-Frame-Options / CSP are stripped
-  const proxiedSrc = `/fetch-site?url=${encodeURIComponent(siteUrl)}`
+  // Route through the serverless proxy (/api/fetch-site works on both Vite dev and Vercel)
+  const proxiedSrc = `/api/fetch-site?url=${encodeURIComponent(siteUrl)}`
 
   return (
     <div style={styles.previewPage}>
