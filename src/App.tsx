@@ -74,12 +74,8 @@ function App() {
     setScreen('preview')
   }
 
-  function handleBack() {
-    setScreen('input')
-  }
-
   if (screen === 'preview') {
-    return <PreviewScreen siteUrl={submittedSite} onBack={handleBack} />
+    return <PreviewScreen siteUrl={submittedSite} />
   }
 
   return (
@@ -201,7 +197,7 @@ function InputScreen({
 /* ────────────────────────────────────────────
    PREVIEW SCREEN
 ──────────────────────────────────────────── */
-function PreviewScreen({ siteUrl, onBack }: { siteUrl: string; onBack: () => void }) {
+function PreviewScreen({ siteUrl }: { siteUrl: string }) {
   const [iframeLoaded, setIframeLoaded] = useState(false)
   const [iframeError, setIframeError] = useState(false)
 
@@ -210,24 +206,6 @@ function PreviewScreen({ siteUrl, onBack }: { siteUrl: string; onBack: () => voi
 
   return (
     <div style={styles.previewPage}>
-      {/* Thin top bar */}
-      <div style={styles.previewBar}>
-        <button onClick={onBack} style={styles.backBtn}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M19 12H5M12 19l-7-7 7-7" />
-          </svg>
-          Back
-        </button>
-        <span style={styles.previewUrl}>{siteUrl}</span>
-        <a href={siteUrl} target="_blank" rel="noopener noreferrer" style={styles.openExternal}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-            <polyline points="15 3 21 3 21 9" />
-            <line x1="10" y1="14" x2="21" y2="3" />
-          </svg>
-          Open in tab
-        </a>
-      </div>
 
       {/* Iframe fills the rest — loads via proxy */}
       <div style={styles.iframeWrap}>

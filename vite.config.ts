@@ -65,12 +65,35 @@ export default defineConfig({
               const contentType = upstream.headers.get('content-type') ?? ''
               if (contentType.includes('text/html')) {
                 let html = await upstream.text()
-                const base = `${target.protocol}//${target.host}`
+                const targetOrigin = `${target.protocol}//${target.host}`
+                const proxyBase = `http://${req.headers.host ?? 'localhost:5174'}`
 
-                // Inject a <base> tag so relative paths resolve correctly
+                // Inject a <base> tag so relative resource paths (CSS/JS/images)
+                // resolve correctly against the real origin
                 html = html.replace(
                   /(<head[^>]*>)/i,
-                  `$1\n<base href="${base}/" />`
+                  `$1\n<base href="${targetOrigin}/" />`
+                )
+
+                // Rewrite all same-origin <a href> links to route through our proxy
+                // so that clicking links inside the iframe doesn't bypass the proxy
+                html = html.replace(
+                  /(<a\b[^>]*?\shref=)(["'])([^"']*)(["'])/gi,
+                  (_match, prefix, q1, href, q2) => {
+                    // Leave anchors, js, mailto, tel as-is
+                    if (!href || /^(#|javascript:|mailto:|tel:)/i.test(href)) {
+                      return _match
+                    }
+                    try {
+                      const abs = new URL(href, targetOrigin + target.pathname)
+                      if (abs.origin === targetOrigin) {
+                        return `${prefix}${q1}${proxyBase}/fetch-site?url=${encodeURIComponent(abs.toString())}${q2}`
+                      }
+                    } catch {
+                      // malformed href — leave untouched
+                    }
+                    return _match
+                  }
                 )
 
                 responseHeaders['content-type'] = 'text/html; charset=utf-8'
