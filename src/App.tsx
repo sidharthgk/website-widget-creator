@@ -3,11 +3,17 @@ import { useState, useEffect, useRef } from 'react'
 type Screen = 'input' | 'preview'
 
 function App() {
-  const [screen, setScreen] = useState<Screen>('input')
-  const [siteUrl, setSiteUrl] = useState('')
-  const [scriptUrl, setScriptUrl] = useState('')
-  const [submittedSite, setSubmittedSite] = useState('')
-  const [submittedScript, setSubmittedScript] = useState('')
+  const params = new URLSearchParams(window.location.search)
+  const paramSite = params.get('site') ?? ''
+  const paramScript = params.get('script') ?? ''
+
+  const [screen, setScreen] = useState<Screen>(() =>
+    paramSite && paramScript ? 'preview' : 'input'
+  )
+  const [siteUrl, setSiteUrl] = useState(paramSite)
+  const [scriptUrl, setScriptUrl] = useState(paramScript)
+  const [submittedSite, setSubmittedSite] = useState(paramSite)
+  const [submittedScript, setSubmittedScript] = useState(paramScript)
   const [urlError, setUrlError] = useState('')
   const [scriptError, setScriptError] = useState('')
   const scriptRef = useRef<HTMLScriptElement | null>(null)
@@ -69,8 +75,11 @@ function App() {
 
     if (!valid) return
 
+    const sp = new URLSearchParams({ site: siteUrl, script: resolvedScript })
+    history.replaceState({}, '', '?' + sp.toString())
+
     setSubmittedSite(siteUrl)
-    setSubmittedScript(parseScriptInput(scriptUrl))
+    setSubmittedScript(resolvedScript)
     setScreen('preview')
   }
 
