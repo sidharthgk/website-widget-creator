@@ -5,9 +5,19 @@
   "description": "Injects user-supplied widget scripts onto target websites for live preview.",
   "permissions": ["storage", "tabs", "scripting", "declarativeNetRequest"],
   "host_permissions": ["<all_urls>"],
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
   "action": {
     "default_title": "Widget Preview",
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
   },
   "background": { "service_worker": "background.js" },
   "content_scripts": [
