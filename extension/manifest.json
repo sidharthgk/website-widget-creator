@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Widget Preview Injector",
+  "version": "1.0.1",
+  "description": "Injects user-supplied widget scripts onto target websites for live preview.",
+  "permissions": ["storage", "tabs", "scripting", "declarativeNetRequest"],
+  "host_permissions": ["<all_urls>"],
+  "action": {
+    "default_title": "Widget Preview",
+    "default_popup": "popup.html"
+  },
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://localhost/*",
+        "http://localhost:*/*",
+        "http://127.0.0.1/*",
+        "http://127.0.0.1:*/*",
+        "https://*.vercel.app/*"
+      ],
+      "js": ["content-app.js"],
+      "run_at": "document_start"
+    }
+  ]
+}

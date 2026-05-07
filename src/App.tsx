@@ -16,7 +16,18 @@ function App() {
   const [submittedScript, setSubmittedScript] = useState(paramScript)
   const [urlError, setUrlError] = useState('')
   const [scriptError, setScriptError] = useState('')
+  const [extInstalled, setExtInstalled] = useState(false)
   const scriptRef = useRef<HTMLScriptElement | null>(null)
+
+  useEffect(() => {
+    const onMsg = (e: MessageEvent) => {
+      const data = e.data as { wwc?: string } | null
+      if (data && data.wwc === 'ext-ready') setExtInstalled(true)
+    }
+    window.addEventListener('message', onMsg)
+    window.postMessage({ wwc: 'ping' }, '*')
+    return () => window.removeEventListener('message', onMsg)
+  }, [])
 
   // Inject / remove the widget script when entering/leaving preview
   useEffect(() => {
@@ -78,13 +89,18 @@ function App() {
     const sp = new URLSearchParams({ site: siteUrl, script: resolvedScript })
     history.replaceState({}, '', '?' + sp.toString())
 
+    if (extInstalled) {
+      window.postMessage({ wwc: 'launch', site: siteUrl, script: resolvedScript }, '*')
+      return
+    }
+
     setSubmittedSite(siteUrl)
     setSubmittedScript(resolvedScript)
     setScreen('preview')
   }
 
   if (screen === 'preview') {
-    return <PreviewScreen siteUrl={submittedSite} />
+    return <PreviewScreen siteUrl={submittedSite} scriptUrl={submittedScript} />
   }
 
   return (
@@ -96,6 +112,7 @@ function App() {
       urlError={urlError}
       scriptError={scriptError}
       onSubmit={handleLaunch}
+      extInstalled={extInstalled}
     />
   )
 }
@@ -111,6 +128,7 @@ interface InputScreenProps {
   urlError: string
   scriptError: string
   onSubmit: (e: React.FormEvent) => void
+  extInstalled: boolean
 }
 
 function InputScreen({
@@ -118,6 +136,7 @@ function InputScreen({
   scriptUrl, setScriptUrl,
   urlError, scriptError,
   onSubmit,
+  extInstalled,
 }: InputScreenProps) {
   return (
     <div style={styles.inputPage}>
@@ -196,8 +215,27 @@ function InputScreen({
         </form>
 
         <p style={styles.hint}>
-          The website will open full-screen and your widget script will be injected automatically.
+          {extInstalled
+            ? 'Extension active — Launch will open the real site in a new tab with your widget injected.'
+            : 'Without the extension we open the site through a proxy iframe (works on most sites). For Cloudflare-protected sites, install the extension below.'}
         </p>
+
+        <div style={styles.extBadge}>
+          {extInstalled ? (
+            <span style={styles.extBadgeOk}>● Extension installed — works on every site</span>
+          ) : (
+            <details style={styles.extDetails}>
+              <summary style={styles.extBadgeMissing}>○ Extension not installed — install for any-site support</summary>
+              <ol style={styles.extInstructions}>
+                <li>Open <code style={styles.code}>chrome://extensions</code> in a new tab.</li>
+                <li>Toggle <strong>Developer mode</strong> (top right).</li>
+                <li>Click <strong>Load unpacked</strong>.</li>
+                <li>Select the <code style={styles.code}>extension/</code> folder from this repository.</li>
+                <li>Reload this page — the badge will turn green.</li>
+              </ol>
+            </details>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -206,12 +244,41 @@ function InputScreen({
 /* ────────────────────────────────────────────
    PREVIEW SCREEN
 ──────────────────────────────────────────── */
-function PreviewScreen({ siteUrl }: { siteUrl: string }) {
+function buildBookmarklet(scriptUrl: string): string {
+  const safe = scriptUrl.replace(/'/g, "\\'")
+  const code = `(()=>{const s=document.createElement('script');s.src='${safe}';s.async=true;document.body.appendChild(s);})();`
+  return 'javascript:' + encodeURIComponent(code)
+}
+
+function escapeAttr(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+function buildBookmarkletAnchorHtml(scriptUrl: string): string {
+  const href = escapeAttr(buildBookmarklet(scriptUrl))
+  const style = 'display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:700;text-decoration:none;cursor:grab;box-shadow:0 4px 16px rgba(99,102,241,0.3);user-select:none;font-family:inherit;'
+  return `<a href="${href}" style="${style}" onclick="event.preventDefault();return false;" draggable="true">⚡ Inject Widget</a>`
+}
+
+function PreviewScreen({ siteUrl, scriptUrl }: { siteUrl: string; scriptUrl: string }) {
   const [iframeLoaded, setIframeLoaded] = useState(false)
   const [iframeError, setIframeError] = useState(false)
+  const [blockReason, setBlockReason] = useState<string | null>(null)
 
   // Route through the serverless proxy (/api/fetch-site works on both Vite dev and Vercel)
   const proxiedSrc = `/api/fetch-site?url=${encodeURIComponent(siteUrl)}`
+
+  useEffect(() => {
+    const onMsg = (e: MessageEvent) => {
+      const data = e.data as { wwc?: string; reason?: string } | null
+      if (data && data.wwc === 'blocked' && typeof data.reason === 'string') {
+        setBlockReason(data.reason)
+        setIframeError(true)
+      }
+    }
+    window.addEventListener('message', onMsg)
+    return () => window.removeEventListener('message', onMsg)
+  }, [])
 
   return (
     <div style={styles.previewPage}>
@@ -229,13 +296,31 @@ function PreviewScreen({ siteUrl }: { siteUrl: string }) {
           <div style={styles.loader}>
             <div style={styles.errorIcon}>⚠️</div>
             <p style={{ color: '#ff6b6b', marginTop: 12, fontSize: 15, fontWeight: 600 }}>
-              Could not load the site
+              {blockReason ? 'Site blocks our preview' : 'Could not load the site'}
             </p>
-            <p style={{ color: '#888', marginTop: 8, fontSize: 13, maxWidth: 380, textAlign: 'center' }}>
-              The proxy was unable to fetch this page. The site may be temporarily unreachable.
+            <p style={{ color: '#888', marginTop: 8, fontSize: 13, maxWidth: 420, textAlign: 'center' }}>
+              {blockReason
+                ? `${blockReason}. Use the bookmarklet below to inject your widget on the real site instead.`
+                : 'The proxy was unable to fetch this page. The site may be temporarily unreachable.'}
             </p>
+
+            {blockReason && scriptUrl && (
+              <div style={styles.bookmarkletBox}>
+                <p style={styles.bookmarkletTitle}>One-time setup:</p>
+                <ol style={styles.bookmarkletSteps}>
+                  <li>Drag this button to your bookmarks bar:</li>
+                  <li
+                    style={{ marginTop: 10, marginBottom: 10, listStyle: 'none', marginLeft: -20 }}
+                    dangerouslySetInnerHTML={{ __html: buildBookmarkletAnchorHtml(scriptUrl) }}
+                  />
+                  <li>Open <a href={siteUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#a5b4fc' }}>{siteUrl}</a> in a new tab.</li>
+                  <li>Click the bookmarklet — your widget will load on the real page.</li>
+                </ol>
+              </div>
+            )}
+
             <a href={siteUrl} target="_blank" rel="noopener noreferrer" style={styles.openTabBtn}>
-              Open in new tab instead
+              Open in new tab
             </a>
           </div>
         )}
@@ -523,6 +608,83 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: '600',
     textDecoration: 'none',
     display: 'inline-block',
+  },
+  extBadge: {
+    marginTop: 16,
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  extBadgeOk: {
+    color: '#34d399',
+    fontWeight: 600,
+  },
+  extBadgeMissing: {
+    color: 'rgba(255,255,255,0.55)',
+    cursor: 'pointer',
+    fontWeight: 600,
+  },
+  extDetails: {
+    color: 'rgba(255,255,255,0.55)',
+  },
+  extInstructions: {
+    textAlign: 'left',
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.6)',
+    lineHeight: 1.7,
+    marginTop: 12,
+    paddingLeft: 20,
+  },
+  extLink: {
+    color: '#a5b4fc',
+    textDecoration: 'none',
+    fontWeight: 700,
+  },
+  code: {
+    background: 'rgba(255,255,255,0.08)',
+    padding: '2px 6px',
+    borderRadius: 4,
+    fontSize: 11,
+    fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+  },
+  bookmarkletBox: {
+    marginTop: 24,
+    padding: '20px 24px',
+    background: 'rgba(255,255,255,0.04)',
+    border: '1px solid rgba(255,255,255,0.1)',
+    borderRadius: 14,
+    maxWidth: 460,
+    width: '100%',
+  },
+  bookmarkletTitle: {
+    fontSize: 13,
+    fontWeight: 700,
+    color: 'rgba(255,255,255,0.85)',
+    margin: 0,
+    marginBottom: 10,
+    letterSpacing: '0.02em',
+    textTransform: 'uppercase',
+  },
+  bookmarkletSteps: {
+    margin: 0,
+    paddingLeft: 20,
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.6)',
+    lineHeight: 1.7,
+  },
+  bookmarkletDrag: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 8,
+    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+    color: '#fff',
+    padding: '10px 18px',
+    borderRadius: 10,
+    fontSize: 13,
+    fontWeight: 700,
+    textDecoration: 'none',
+    cursor: 'grab',
+    boxShadow: '0 4px 16px rgba(99,102,241,0.3)',
+    userSelect: 'none',
   },
 }
 
