@@ -1,73 +1,42 @@
-# React + TypeScript + Vite
+# Website Widget Creator
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Preview any third-party widget on any website without permission from the site owner.
 
-Currently, two official plugins are available:
+Two parts:
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+1. **Web app** (this repo, deployed on Vercel) — paste a website URL + your widget script URL, see them together in an iframe via a server-side proxy. Works on most sites that use only header-based blocks (XFO/CSP).
+2. **Chrome extension** (`extension/` folder) — for sites the proxy can't reach (Cloudflare bot detection, etc.). Opens the real site in a new tab, strips CSP, injects your widget. Works on every site because it uses your real browser.
 
-## React Compiler
+## Install the Chrome extension (free, takes 30 seconds)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+1. **Download** the latest `widget-preview-extension.zip` from the [Releases](https://github.com/sidharthgk/website-widget-creator/releases) page.
+2. **Unzip** anywhere (e.g. Desktop).
+3. Open `chrome://extensions` in Chrome (or Edge).
+4. Toggle **Developer mode** ON (top-right).
+5. Click **Load unpacked** and pick the unzipped `extension/` folder.
+6. Pin the extension (puzzle icon → pushpin next to "Widget Preview Injector").
 
-## Expanding the ESLint configuration
+To use:
+1. Click the **W** icon in the toolbar.
+2. Site URL auto-fills with the current tab. Paste your widget script URL.
+3. Click **Launch Preview**.
+4. New tab opens with the site + your widget injected.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+The "Block existing widgets on the site" toggle hides chat widgets from 50+ known vendors (Intercom, Drift, Tawk, Zendesk, etc.) so yours is the only one visible.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Run the web app
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Open http://localhost:5173.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Deploy the web app
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+Push to GitHub, connect to Vercel. The proxy at `api/fetch-site.ts` runs as a Vercel serverless function automatically.
+
+## How it works
+
+See `CLAUDE.md` for architecture notes.

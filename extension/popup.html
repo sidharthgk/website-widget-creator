@@ -1,0 +1,121 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Widget Preview</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      width: 340px;
+      margin: 0;
+      padding: 18px;
+      background: #0d0d1a;
+      color: #fff;
+      font-family: -apple-system, system-ui, sans-serif;
+    }
+    h1 {
+      font-size: 14px;
+      font-weight: 700;
+      margin: 0 0 14px;
+      letter-spacing: -0.01em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .icon {
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+    }
+    label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.6);
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      margin: 14px 0 6px;
+    }
+    input {
+      width: 100%;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px;
+      padding: 10px 12px;
+      color: #fff;
+      font-size: 13px;
+      outline: none;
+      font-family: inherit;
+    }
+    input:focus {
+      border-color: rgba(99,102,241,0.7);
+      background: rgba(255,255,255,0.08);
+    }
+    button {
+      width: 100%;
+      margin-top: 16px;
+      padding: 11px;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      border: none;
+      border-radius: 9px;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    button:hover { opacity: 0.92; }
+    .err {
+      color: #f87171;
+      font-size: 11px;
+      margin-top: 6px;
+      min-height: 14px;
+    }
+    .hint {
+      margin-top: 12px;
+      font-size: 11px;
+      color: rgba(255,255,255,0.4);
+      line-height: 1.5;
+    }
+    .check {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 14px;
+      font-size: 12px;
+      color: rgba(255,255,255,0.75);
+      cursor: pointer;
+      user-select: none;
+    }
+    .check input { width: 14px; height: 14px; accent-color: #6366f1; }
+  </style>
+</head>
+<body>
+  <h1><span class="icon">⚡</span> Widget Preview</h1>
+
+  <label for="site">Website URL</label>
+  <input id="site" type="text" placeholder="https://example.com" autofocus spellcheck="false" />
+
+  <label for="script">Widget Script URL</label>
+  <input id="script" type="text" placeholder="https://widget.example.com/script.js" spellcheck="false" />
+
+  <div class="err" id="err"></div>
+
+  <label class="check">
+    <input type="checkbox" id="hideOthers" checked />
+    <span>Block existing widgets on the site</span>
+  </label>
+
+  <button id="launch">Launch Preview</button>
+
+  <p class="hint">Opens the website in a new tab and injects your widget script.</p>
+
+  <script src="popup.js"></script>
+</body>
+</html>
