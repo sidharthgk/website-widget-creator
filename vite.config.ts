@@ -119,7 +119,11 @@ export default defineConfig({
                 html = html.replace(/<meta\b[^>]*http-equiv=["']?(content-security-policy|x-frame-options|refresh)["']?[^>]*>/gi, '')
                 html = html.replace(/\sintegrity=(["'])[^"']*\1/gi, '')
 
-                html = html.replace(/(<head[^>]*>)/i, `$1\n<base href="${targetOrigin}/" />\n${ANTI_FRAME_BUSTER}`)
+                // no-referrer: subresources (images/CSS/fonts) load directly from the
+                // target origin via <base>, so the browser would attach this proxy's
+                // origin as Referer — tripping Cloudflare/hotlink protection (403 ->
+                // ERR_BLOCKED_BY_ORB). Sending no Referer passes those checks.
+                html = html.replace(/(<head[^>]*>)/i, `$1\n<meta name="referrer" content="no-referrer" />\n<base href="${targetOrigin}/" />\n${ANTI_FRAME_BUSTER}`)
 
                 const rewriteSameOrigin = (input: string, attrPattern: RegExp): string =>
                   input.replace(attrPattern, (match, prefix, q1, href, q2) => {
