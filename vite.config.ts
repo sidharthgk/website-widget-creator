@@ -16,7 +16,7 @@ const BLOCKED_HEADERS = new Set([
 
 const h2Agent = new Agent({ allowH2: true })
 
-const ANTI_FRAME_BUSTER = `<script>(function(){try{Object.defineProperty(window,'top',{get:function(){return window}});Object.defineProperty(window,'parent',{get:function(){return window}});Object.defineProperty(window,'self',{get:function(){return window}});Object.defineProperty(document,'domain',{get:function(){return location.hostname},set:function(){}});}catch(e){}})();</script>`
+const ANTI_FRAME_BUSTER = `<script>(function(){try{Object.defineProperty(window,'top',{get:function(){return window}});Object.defineProperty(window,'parent',{get:function(){return window}});Object.defineProperty(window,'self',{get:function(){return window}});Object.defineProperty(document,'domain',{get:function(){return location.hostname},set:function(){}});}catch(e){}try{var P='/api/fetch-site?url=';var map=function(u){try{var a=new URL(String(u),document.baseURI);if(a.origin===location.origin)return a.pathname+a.search+a.hash;return P+encodeURIComponent(a.href)}catch(e){return u}};['pushState','replaceState'].forEach(function(m){var o=History.prototype[m];History.prototype[m]=function(s,t,u){if(u==null)return o.call(this,s,t,u);try{return o.call(this,s,t,map(u))}catch(e){try{return o.call(this,s,t)}catch(e2){return}}}});}catch(e){}})();</script>`
 
 function detectBlock(html: string): string | null {
   const lower = html.toLowerCase()
