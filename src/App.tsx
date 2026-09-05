@@ -6,6 +6,7 @@ function App() {
   const params = new URLSearchParams(window.location.search)
   const paramSite = params.get('site') ?? ''
   const paramScript = params.get('script') ?? ''
+  const paramShift = parseShift(params)
 
   const [screen, setScreen] = useState<Screen>(() =>
     paramSite && paramScript ? 'preview' : 'input'
@@ -14,6 +15,11 @@ function App() {
   const [scriptUrl, setScriptUrl] = useState(paramScript)
   const [submittedSite, setSubmittedSite] = useState(paramSite)
   const [submittedScript, setSubmittedScript] = useState(paramScript)
+  // The UI is phrased as "nudge up / nudge left"; negatives move down / right.
+  const [shiftUp, setShiftUp] = useState(String(-paramShift.dy || ''))
+  const [shiftLeft, setShiftLeft] = useState(String(-paramShift.dx || ''))
+  const [shiftX, setShiftX] = useState(paramShift.dx)
+  const [shiftY, setShiftY] = useState(paramShift.dy)
   const [urlError, setUrlError] = useState('')
   const [scriptError, setScriptError] = useState('')
   const [extInstalled, setExtInstalled] = useState(false)
@@ -31,21 +37,25 @@ function App() {
 
   // Inject / remove the widget script when entering/leaving preview
   useEffect(() => {
+    let untrackShift: (() => void) | null = null
+
     if (screen === 'preview' && submittedScript) {
       const tag = document.createElement('script')
       tag.src = submittedScript
       tag.async = true
+      if (shiftX || shiftY) untrackShift = trackWidgetShift(tag, shiftX, shiftY)
       document.body.appendChild(tag)
       scriptRef.current = tag
     }
 
     return () => {
+      untrackShift?.()
       if (scriptRef.current) {
         scriptRef.current.remove()
         scriptRef.current = null
       }
     }
-  }, [screen, submittedScript])
+  }, [screen, submittedScript, shiftX, shiftY])
 
   function isValidUrl(val: string) {
     try {
@@ -86,7 +96,16 @@ function App() {
 
     if (!valid) return
 
+    const up = Number(shiftUp) || 0
+    const left = Number(shiftLeft) || 0
+    setShiftX(-left)
+    setShiftY(-up)
+
     const sp = new URLSearchParams({ site: siteUrl, script: resolvedScript })
+    if (up > 0) sp.set('up', String(up))
+    else if (up < 0) sp.set('down', String(-up))
+    if (left > 0) sp.set('left', String(left))
+    else if (left < 0) sp.set('right', String(-left))
     history.replaceState({}, '', '?' + sp.toString())
 
     if (extInstalled) {
@@ -109,6 +128,10 @@ function App() {
       setSiteUrl={setSiteUrl}
       scriptUrl={scriptUrl}
       setScriptUrl={setScriptUrl}
+      shiftUp={shiftUp}
+      setShiftUp={setShiftUp}
+      shiftLeft={shiftLeft}
+      setShiftLeft={setShiftLeft}
       urlError={urlError}
       scriptError={scriptError}
       onSubmit={handleLaunch}
@@ -125,6 +148,10 @@ interface InputScreenProps {
   setSiteUrl: (v: string) => void
   scriptUrl: string
   setScriptUrl: (v: string) => void
+  shiftUp: string
+  setShiftUp: (v: string) => void
+  shiftLeft: string
+  setShiftLeft: (v: string) => void
   urlError: string
   scriptError: string
   onSubmit: (e: React.FormEvent) => void
@@ -134,6 +161,8 @@ interface InputScreenProps {
 function InputScreen({
   siteUrl, setSiteUrl,
   scriptUrl, setScriptUrl,
+  shiftUp, setShiftUp,
+  shiftLeft, setShiftLeft,
   urlError, scriptError,
   onSubmit,
   extInstalled,
@@ -206,6 +235,43 @@ function InputScreen({
             {scriptError && <span style={styles.error}>{scriptError}</span>}
           </div>
 
+          {/* Widget position — optional nudge from wherever the widget mounts */}
+          <div style={styles.fieldGroup}>
+            <label style={styles.label}>
+              <span style={styles.labelIcon}>⌖</span> Widget Position
+              <span style={styles.labelOptional}>optional</span>
+            </label>
+            <div style={styles.shiftRow}>
+              <div className="wwc-shift-field" style={styles.shiftField}>
+                <span style={styles.shiftPrefix}>↑ Up</span>
+                <input
+                  className="wwc-num"
+                  type="number"
+                  value={shiftUp}
+                  onChange={e => setShiftUp(e.target.value)}
+                  placeholder="0"
+                  style={styles.shiftInput}
+                />
+                <span style={styles.shiftSuffix}>px</span>
+              </div>
+              <div className="wwc-shift-field" style={styles.shiftField}>
+                <span style={styles.shiftPrefix}>← Left</span>
+                <input
+                  className="wwc-num"
+                  type="number"
+                  value={shiftLeft}
+                  onChange={e => setShiftLeft(e.target.value)}
+                  placeholder="0"
+                  style={styles.shiftInput}
+                />
+                <span style={styles.shiftSuffix}>px</span>
+              </div>
+            </div>
+            <span style={styles.shiftHint}>
+              Nudges your widget from wherever its script places it. Negative values move it down / right.
+            </span>
+          </div>
+
           <button type="submit" style={styles.launchBtn}>
             <span>Launch Preview</span>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -258,6 +324,104 @@ function buildBookmarkletAnchorHtml(scriptUrl: string): string {
   const href = escapeAttr(buildBookmarklet(scriptUrl))
   const style = 'display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:700;text-decoration:none;cursor:grab;box-shadow:0 4px 16px rgba(99,102,241,0.3);user-select:none;font-family:inherit;'
   return `<a href="${href}" style="${style}" onclick="event.preventDefault();return false;" draggable="true">⚡ Inject Widget</a>`
+}
+
+// ---- Widget position offset (?up= &down= &left= &right=, in pixels) ----
+
+const SHIFT_STYLE_ID = 'wwc-widget-shift'
+
+// dx > 0 moves the widget right, dy > 0 moves it down.
+function parseShift(params: URLSearchParams): { dx: number; dy: number } {
+  const px = (key: string) => {
+    const raw = params.get(key)
+    if (raw === null) return 0
+    const n = Number(raw)
+    return Number.isFinite(n) ? n : 0
+  }
+  return { dx: px('right') - px('left'), dy: px('down') - px('up') }
+}
+
+// The shift is expressed as margins rather than by rewriting the widget's own
+// bottom/right, so it is idempotent (re-applying can never drift), survives the
+// widget restyling itself, and doesn't fight any transform it animates with.
+function ensureShiftStyle(dx: number, dy: number): HTMLStyleElement {
+  let el = document.getElementById(SHIFT_STYLE_ID) as HTMLStyleElement | null
+  if (!el) {
+    el = document.createElement('style')
+    el.id = SHIFT_STYLE_ID
+    document.head.appendChild(el)
+  }
+  el.textContent = [
+    `.wwc-shift-b{margin-bottom:${-dy}px !important}`,
+    `.wwc-shift-t{margin-top:${dy}px !important}`,
+    `.wwc-shift-r{margin-right:${-dx}px !important}`,
+    `.wwc-shift-l{margin-left:${dx}px !important}`,
+  ].join('')
+  return el
+}
+
+function shiftClassesFor(el: HTMLElement, dx: number, dy: number): string[] {
+  const cs = getComputedStyle(el)
+  const out: string[] = []
+  if (dy) out.push(cs.bottom !== 'auto' ? 'wwc-shift-b' : cs.top !== 'auto' ? 'wwc-shift-t' : '')
+  if (dx) out.push(cs.right !== 'auto' ? 'wwc-shift-r' : cs.left !== 'auto' ? 'wwc-shift-l' : '')
+  return out.filter(Boolean)
+}
+
+// Widgets mount asynchronously and often re-mount when opened/closed, so watch
+// the DOM instead of shifting once. Returns a cleanup that undoes everything.
+function trackWidgetShift(skipNode: Node, dx: number, dy: number): () => void {
+  const styleEl = ensureShiftStyle(dx, dy)
+  const tracked = new Map<HTMLElement, string[]>()
+  const observers: MutationObserver[] = []
+
+  const isShiftable = (el: HTMLElement) => {
+    if (getComputedStyle(el).position !== 'fixed') return false
+    const r = el.getBoundingClientRect()
+    if (!r.width || !r.height) return false
+    // Leave full-screen overlays and backdrops where they are.
+    return !(r.width >= window.innerWidth * 0.9 && r.height >= window.innerHeight * 0.9)
+  }
+
+  const track = (el: HTMLElement) => {
+    if (tracked.has(el) || !isShiftable(el)) return
+    const classes = shiftClassesFor(el, dx, dy)
+    if (!classes.length) return
+    tracked.set(el, classes)
+    el.classList.add(...classes)
+    // Re-add if the widget rewrites its own class list.
+    const mo = new MutationObserver(() => {
+      for (const c of classes) if (!el.classList.contains(c)) el.classList.add(c)
+    })
+    mo.observe(el, { attributes: true, attributeFilter: ['class'] })
+    observers.push(mo)
+  }
+
+  const consider = (node: Node) => {
+    if (!(node instanceof HTMLElement)) return
+    if (node === skipNode || node.closest('#root')) return // our own UI, not the widget
+    track(node)
+    node.querySelectorAll<HTMLElement>('*').forEach(track)
+  }
+
+  const rescan = () => document.body.childNodes.forEach(consider)
+
+  const bodyObserver = new MutationObserver((records) => {
+    for (const r of records) r.addedNodes.forEach(consider)
+  })
+  bodyObserver.observe(document.body, { childList: true, subtree: true })
+
+  // Catches widgets that mount hidden or zero-sized and settle a moment later.
+  const timers = [300, 1000, 3000].map((t) => window.setTimeout(rescan, t))
+  rescan()
+
+  return () => {
+    timers.forEach(clearTimeout)
+    bodyObserver.disconnect()
+    observers.forEach((o) => o.disconnect())
+    tracked.forEach((classes, el) => el.classList.remove(...classes))
+    styleEl.remove()
+  }
 }
 
 function PreviewScreen({ siteUrl, scriptUrl }: { siteUrl: string; scriptUrl: string }) {
@@ -472,6 +636,55 @@ const styles: Record<string, React.CSSProperties> = {
     outline: 'none',
     transition: 'border-color 0.2s, background 0.2s',
     fontFamily: 'inherit',
+  },
+  labelOptional: {
+    fontSize: '11px',
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.35)',
+    letterSpacing: '0.02em',
+  },
+  shiftRow: {
+    display: 'flex',
+    gap: '10px',
+  },
+  shiftField: {
+    flex: 1,
+    minWidth: 0,
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    background: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(255,255,255,0.12)',
+    borderRadius: '12px',
+    padding: '0 14px',
+    transition: 'border-color 0.2s, background 0.2s, box-shadow 0.2s',
+  },
+  shiftPrefix: {
+    fontSize: '13px',
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.5)',
+    whiteSpace: 'nowrap',
+  },
+  shiftInput: {
+    flex: 1,
+    minWidth: 0,
+    background: 'transparent',
+    border: 'none',
+    padding: '14px 0',
+    color: '#fff',
+    fontSize: '14px',
+    outline: 'none',
+    fontFamily: 'inherit',
+    textAlign: 'right',
+  },
+  shiftSuffix: {
+    fontSize: '12px',
+    color: 'rgba(255,255,255,0.35)',
+  },
+  shiftHint: {
+    fontSize: '12px',
+    color: 'rgba(255,255,255,0.4)',
+    lineHeight: 1.5,
   },
   inputError: {
     borderColor: 'rgba(239,68,68,0.6)',
@@ -693,6 +906,8 @@ const styleTag = document.createElement('style')
 styleTag.textContent = `
   @keyframes spin { to { transform: rotate(360deg); } }
   input:focus { border-color: rgba(99,102,241,0.7) !important; background: rgba(255,255,255,0.08) !important; box-shadow: 0 0 0 3px rgba(99,102,241,0.15); }
+  input.wwc-num:focus { background: transparent !important; box-shadow: none !important; }
+  .wwc-shift-field:focus-within { border-color: rgba(99,102,241,0.7) !important; background: rgba(255,255,255,0.08) !important; box-shadow: 0 0 0 3px rgba(99,102,241,0.15); }
   button[type=submit]:hover { transform: translateY(-1px); box-shadow: 0 12px 40px rgba(99,102,241,0.5) !important; }
 `
 document.head.appendChild(styleTag)
