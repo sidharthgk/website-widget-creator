@@ -17,6 +17,8 @@ Single-page React 19 + TS app (Vite 7) whose purpose is to load an arbitrary thi
 
 Two screens, controlled by local state in `src/App.tsx`:
 1. **Input** — collects a site URL and a widget script URL (or full `<script src="...">` tag, parsed via regex in `parseScriptInput`). On submit, both are pushed into the query string (`?site=&script=`) via `history.replaceState` so the preview is shareable/bookmarkable. App reads those params on initial load and skips straight to preview.
+Optional URL params `up` / `down` / `left` / `right` (pixels) nudge the injected widget from wherever it places itself — see "Widget position offset" below.
+
 2. **Preview** — full-screen iframe whose `src` points at `/api/fetch-site?url=<encoded>`. The widget script is injected into the **outer** document (not the iframe) by a `useEffect` that appends a `<script>` to `document.body` and removes it on unmount.
 
 ### The proxy is the core trick
@@ -48,6 +50,14 @@ Both do the same thing — when changing proxy behavior, edit **both files**, lo
 - Non-HTML (CSS/JS/images) piped through as buffer.
 
 **Known limits (won't fix free):** Cloudflare Bot Management Pro / Turnstile / JS-challenge sites still fail because of TLS JA3 fingerprint and datacenter IP reputation — these need real browser (extension) or paid residential-IP cloud browser. Block-detection just gives a clean error there.
+
+### Widget position offset
+
+`?up=&down=&left=&right=` (pixels, any combination) shift the widget after it mounts. `parseShift` collapses them into `dx`/`dy` (positive = right/down); `trackWidgetShift` then MutationObserver-watches `document.body` for whatever the widget script mounts and tags each `position: fixed` element with a `wwc-shift-*` class.
+
+The shift is applied as **margins**, not by rewriting the widget's own `bottom`/`right`: margins are idempotent (re-applying can't drift), survive the widget restyling itself, and don't clobber transforms it animates with. Bottom-anchored elements get `margin-bottom`, top-anchored get `margin-top`, likewise left/right.
+
+Skipped: anything inside `#root` (our own UI) and near-fullscreen elements (overlays/backdrops). Elements that mount hidden or zero-sized are caught by rescans at 300ms/1s/3s. Params are preserved across a relaunch from the input screen; there is no UI for them, and the extension flow ignores them.
 
 ### Optional companion extension
 

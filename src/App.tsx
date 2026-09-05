@@ -6,6 +6,7 @@ function App() {
   const params = new URLSearchParams(window.location.search)
   const paramSite = params.get('site') ?? ''
   const paramScript = params.get('script') ?? ''
+  const { dx: shiftX, dy: shiftY } = parseShift(params)
 
   const [screen, setScreen] = useState<Screen>(() =>
     paramSite && paramScript ? 'preview' : 'input'
@@ -31,21 +32,25 @@ function App() {
 
   // Inject / remove the widget script when entering/leaving preview
   useEffect(() => {
+    let untrackShift: (() => void) | null = null
+
     if (screen === 'preview' && submittedScript) {
       const tag = document.createElement('script')
       tag.src = submittedScript
       tag.async = true
+      if (shiftX || shiftY) untrackShift = trackWidgetShift(tag, shiftX, shiftY)
       document.body.appendChild(tag)
       scriptRef.current = tag
     }
 
     return () => {
+      untrackShift?.()
       if (scriptRef.current) {
         scriptRef.current.remove()
         scriptRef.current = null
       }
     }
-  }, [screen, submittedScript])
+  }, [screen, submittedScript, shiftX, shiftY])
 
   function isValidUrl(val: string) {
     try {
@@ -87,6 +92,10 @@ function App() {
     if (!valid) return
 
     const sp = new URLSearchParams({ site: siteUrl, script: resolvedScript })
+    for (const key of SHIFT_PARAMS) {
+      const val = params.get(key)
+      if (val) sp.set(key, val)
+    }
     history.replaceState({}, '', '?' + sp.toString())
 
     if (extInstalled) {
@@ -258,6 +267,105 @@ function buildBookmarkletAnchorHtml(scriptUrl: string): string {
   const href = escapeAttr(buildBookmarklet(scriptUrl))
   const style = 'display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:700;text-decoration:none;cursor:grab;box-shadow:0 4px 16px rgba(99,102,241,0.3);user-select:none;font-family:inherit;'
   return `<a href="${href}" style="${style}" onclick="event.preventDefault();return false;" draggable="true">⚡ Inject Widget</a>`
+}
+
+// ---- Widget position offset (?up= &down= &left= &right=, in pixels) ----
+
+const SHIFT_PARAMS = ['up', 'down', 'left', 'right'] as const
+const SHIFT_STYLE_ID = 'wwc-widget-shift'
+
+// dx > 0 moves the widget right, dy > 0 moves it down.
+function parseShift(params: URLSearchParams): { dx: number; dy: number } {
+  const px = (key: string) => {
+    const raw = params.get(key)
+    if (raw === null) return 0
+    const n = Number(raw)
+    return Number.isFinite(n) ? n : 0
+  }
+  return { dx: px('right') - px('left'), dy: px('down') - px('up') }
+}
+
+// The shift is expressed as margins rather than by rewriting the widget's own
+// bottom/right, so it is idempotent (re-applying can never drift), survives the
+// widget restyling itself, and doesn't fight any transform it animates with.
+function ensureShiftStyle(dx: number, dy: number): HTMLStyleElement {
+  let el = document.getElementById(SHIFT_STYLE_ID) as HTMLStyleElement | null
+  if (!el) {
+    el = document.createElement('style')
+    el.id = SHIFT_STYLE_ID
+    document.head.appendChild(el)
+  }
+  el.textContent = [
+    `.wwc-shift-b{margin-bottom:${-dy}px !important}`,
+    `.wwc-shift-t{margin-top:${dy}px !important}`,
+    `.wwc-shift-r{margin-right:${-dx}px !important}`,
+    `.wwc-shift-l{margin-left:${dx}px !important}`,
+  ].join('')
+  return el
+}
+
+function shiftClassesFor(el: HTMLElement, dx: number, dy: number): string[] {
+  const cs = getComputedStyle(el)
+  const out: string[] = []
+  if (dy) out.push(cs.bottom !== 'auto' ? 'wwc-shift-b' : cs.top !== 'auto' ? 'wwc-shift-t' : '')
+  if (dx) out.push(cs.right !== 'auto' ? 'wwc-shift-r' : cs.left !== 'auto' ? 'wwc-shift-l' : '')
+  return out.filter(Boolean)
+}
+
+// Widgets mount asynchronously and often re-mount when opened/closed, so watch
+// the DOM instead of shifting once. Returns a cleanup that undoes everything.
+function trackWidgetShift(skipNode: Node, dx: number, dy: number): () => void {
+  const styleEl = ensureShiftStyle(dx, dy)
+  const tracked = new Map<HTMLElement, string[]>()
+  const observers: MutationObserver[] = []
+
+  const isShiftable = (el: HTMLElement) => {
+    if (getComputedStyle(el).position !== 'fixed') return false
+    const r = el.getBoundingClientRect()
+    if (!r.width || !r.height) return false
+    // Leave full-screen overlays and backdrops where they are.
+    return !(r.width >= window.innerWidth * 0.9 && r.height >= window.innerHeight * 0.9)
+  }
+
+  const track = (el: HTMLElement) => {
+    if (tracked.has(el) || !isShiftable(el)) return
+    const classes = shiftClassesFor(el, dx, dy)
+    if (!classes.length) return
+    tracked.set(el, classes)
+    el.classList.add(...classes)
+    // Re-add if the widget rewrites its own class list.
+    const mo = new MutationObserver(() => {
+      for (const c of classes) if (!el.classList.contains(c)) el.classList.add(c)
+    })
+    mo.observe(el, { attributes: true, attributeFilter: ['class'] })
+    observers.push(mo)
+  }
+
+  const consider = (node: Node) => {
+    if (!(node instanceof HTMLElement)) return
+    if (node === skipNode || node.closest('#root')) return // our own UI, not the widget
+    track(node)
+    node.querySelectorAll<HTMLElement>('*').forEach(track)
+  }
+
+  const rescan = () => document.body.childNodes.forEach(consider)
+
+  const bodyObserver = new MutationObserver((records) => {
+    for (const r of records) r.addedNodes.forEach(consider)
+  })
+  bodyObserver.observe(document.body, { childList: true, subtree: true })
+
+  // Catches widgets that mount hidden or zero-sized and settle a moment later.
+  const timers = [300, 1000, 3000].map((t) => window.setTimeout(rescan, t))
+  rescan()
+
+  return () => {
+    timers.forEach(clearTimeout)
+    bodyObserver.disconnect()
+    observers.forEach((o) => o.disconnect())
+    tracked.forEach((classes, el) => el.classList.remove(...classes))
+    styleEl.remove()
+  }
 }
 
 function PreviewScreen({ siteUrl, scriptUrl }: { siteUrl: string; scriptUrl: string }) {
