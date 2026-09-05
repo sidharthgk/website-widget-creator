@@ -6,7 +6,7 @@ function App() {
   const params = new URLSearchParams(window.location.search)
   const paramSite = params.get('site') ?? ''
   const paramScript = params.get('script') ?? ''
-  const { dx: shiftX, dy: shiftY } = parseShift(params)
+  const paramShift = parseShift(params)
 
   const [screen, setScreen] = useState<Screen>(() =>
     paramSite && paramScript ? 'preview' : 'input'
@@ -15,6 +15,11 @@ function App() {
   const [scriptUrl, setScriptUrl] = useState(paramScript)
   const [submittedSite, setSubmittedSite] = useState(paramSite)
   const [submittedScript, setSubmittedScript] = useState(paramScript)
+  // The UI is phrased as "nudge up / nudge left"; negatives move down / right.
+  const [shiftUp, setShiftUp] = useState(String(-paramShift.dy || ''))
+  const [shiftLeft, setShiftLeft] = useState(String(-paramShift.dx || ''))
+  const [shiftX, setShiftX] = useState(paramShift.dx)
+  const [shiftY, setShiftY] = useState(paramShift.dy)
   const [urlError, setUrlError] = useState('')
   const [scriptError, setScriptError] = useState('')
   const [extInstalled, setExtInstalled] = useState(false)
@@ -91,11 +96,16 @@ function App() {
 
     if (!valid) return
 
+    const up = Number(shiftUp) || 0
+    const left = Number(shiftLeft) || 0
+    setShiftX(-left)
+    setShiftY(-up)
+
     const sp = new URLSearchParams({ site: siteUrl, script: resolvedScript })
-    for (const key of SHIFT_PARAMS) {
-      const val = params.get(key)
-      if (val) sp.set(key, val)
-    }
+    if (up > 0) sp.set('up', String(up))
+    else if (up < 0) sp.set('down', String(-up))
+    if (left > 0) sp.set('left', String(left))
+    else if (left < 0) sp.set('right', String(-left))
     history.replaceState({}, '', '?' + sp.toString())
 
     if (extInstalled) {
@@ -118,6 +128,10 @@ function App() {
       setSiteUrl={setSiteUrl}
       scriptUrl={scriptUrl}
       setScriptUrl={setScriptUrl}
+      shiftUp={shiftUp}
+      setShiftUp={setShiftUp}
+      shiftLeft={shiftLeft}
+      setShiftLeft={setShiftLeft}
       urlError={urlError}
       scriptError={scriptError}
       onSubmit={handleLaunch}
@@ -134,6 +148,10 @@ interface InputScreenProps {
   setSiteUrl: (v: string) => void
   scriptUrl: string
   setScriptUrl: (v: string) => void
+  shiftUp: string
+  setShiftUp: (v: string) => void
+  shiftLeft: string
+  setShiftLeft: (v: string) => void
   urlError: string
   scriptError: string
   onSubmit: (e: React.FormEvent) => void
@@ -143,6 +161,8 @@ interface InputScreenProps {
 function InputScreen({
   siteUrl, setSiteUrl,
   scriptUrl, setScriptUrl,
+  shiftUp, setShiftUp,
+  shiftLeft, setShiftLeft,
   urlError, scriptError,
   onSubmit,
   extInstalled,
@@ -215,6 +235,43 @@ function InputScreen({
             {scriptError && <span style={styles.error}>{scriptError}</span>}
           </div>
 
+          {/* Widget position — optional nudge from wherever the widget mounts */}
+          <div style={styles.fieldGroup}>
+            <label style={styles.label}>
+              <span style={styles.labelIcon}>⌖</span> Widget Position
+              <span style={styles.labelOptional}>optional</span>
+            </label>
+            <div style={styles.shiftRow}>
+              <div className="wwc-shift-field" style={styles.shiftField}>
+                <span style={styles.shiftPrefix}>↑ Up</span>
+                <input
+                  className="wwc-num"
+                  type="number"
+                  value={shiftUp}
+                  onChange={e => setShiftUp(e.target.value)}
+                  placeholder="0"
+                  style={styles.shiftInput}
+                />
+                <span style={styles.shiftSuffix}>px</span>
+              </div>
+              <div className="wwc-shift-field" style={styles.shiftField}>
+                <span style={styles.shiftPrefix}>← Left</span>
+                <input
+                  className="wwc-num"
+                  type="number"
+                  value={shiftLeft}
+                  onChange={e => setShiftLeft(e.target.value)}
+                  placeholder="0"
+                  style={styles.shiftInput}
+                />
+                <span style={styles.shiftSuffix}>px</span>
+              </div>
+            </div>
+            <span style={styles.shiftHint}>
+              Nudges your widget from wherever its script places it. Negative values move it down / right.
+            </span>
+          </div>
+
           <button type="submit" style={styles.launchBtn}>
             <span>Launch Preview</span>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -271,7 +328,6 @@ function buildBookmarkletAnchorHtml(scriptUrl: string): string {
 
 // ---- Widget position offset (?up= &down= &left= &right=, in pixels) ----
 
-const SHIFT_PARAMS = ['up', 'down', 'left', 'right'] as const
 const SHIFT_STYLE_ID = 'wwc-widget-shift'
 
 // dx > 0 moves the widget right, dy > 0 moves it down.
@@ -581,6 +637,55 @@ const styles: Record<string, React.CSSProperties> = {
     transition: 'border-color 0.2s, background 0.2s',
     fontFamily: 'inherit',
   },
+  labelOptional: {
+    fontSize: '11px',
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.35)',
+    letterSpacing: '0.02em',
+  },
+  shiftRow: {
+    display: 'flex',
+    gap: '10px',
+  },
+  shiftField: {
+    flex: 1,
+    minWidth: 0,
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    background: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(255,255,255,0.12)',
+    borderRadius: '12px',
+    padding: '0 14px',
+    transition: 'border-color 0.2s, background 0.2s, box-shadow 0.2s',
+  },
+  shiftPrefix: {
+    fontSize: '13px',
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.5)',
+    whiteSpace: 'nowrap',
+  },
+  shiftInput: {
+    flex: 1,
+    minWidth: 0,
+    background: 'transparent',
+    border: 'none',
+    padding: '14px 0',
+    color: '#fff',
+    fontSize: '14px',
+    outline: 'none',
+    fontFamily: 'inherit',
+    textAlign: 'right',
+  },
+  shiftSuffix: {
+    fontSize: '12px',
+    color: 'rgba(255,255,255,0.35)',
+  },
+  shiftHint: {
+    fontSize: '12px',
+    color: 'rgba(255,255,255,0.4)',
+    lineHeight: 1.5,
+  },
   inputError: {
     borderColor: 'rgba(239,68,68,0.6)',
     background: 'rgba(239,68,68,0.05)',
@@ -801,6 +906,8 @@ const styleTag = document.createElement('style')
 styleTag.textContent = `
   @keyframes spin { to { transform: rotate(360deg); } }
   input:focus { border-color: rgba(99,102,241,0.7) !important; background: rgba(255,255,255,0.08) !important; box-shadow: 0 0 0 3px rgba(99,102,241,0.15); }
+  input.wwc-num:focus { background: transparent !important; box-shadow: none !important; }
+  .wwc-shift-field:focus-within { border-color: rgba(99,102,241,0.7) !important; background: rgba(255,255,255,0.08) !important; box-shadow: 0 0 0 3px rgba(99,102,241,0.15); }
   button[type=submit]:hover { transform: translateY(-1px); box-shadow: 0 12px 40px rgba(99,102,241,0.5) !important; }
 `
 document.head.appendChild(styleTag)
