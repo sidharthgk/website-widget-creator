@@ -23,6 +23,9 @@ function detectBlock(html: string): string | null {
   if (lower.includes('cf-error-code') || lower.includes('cf-wrapper') || lower.includes('sorry, you have been blocked') || lower.includes('attention required! | cloudflare')) {
     return 'Cloudflare bot challenge — site requires real browser'
   }
+  if (lower.includes('<title>vercel security checkpoint</title>')) {
+    return 'Vercel Firewall bot challenge — site requires real browser'
+  }
   if (lower.includes('please verify you are a human') || lower.includes('_pxhd')) {
     return 'PerimeterX bot challenge'
   }
