@@ -286,6 +286,19 @@ function InputScreen({
             : 'Without the extension we open the site through a proxy iframe (works on most sites). For Cloudflare-protected sites, install the extension below.'}
         </p>
 
+        <details style={styles.extDetails}>
+          <summary style={styles.extBadgeMissing}>⚡ No-install option — bookmarklet for any site</summary>
+          <ol style={styles.extInstructions}>
+            <li>
+              Drag{' '}
+              <span dangerouslySetInnerHTML={{ __html: buildBookmarkletAnchorHtml(buildUniversalBookmarklet(), '⚡ Inject Any Widget') }} />
+              {' '}to your bookmarks bar (once).
+            </li>
+            <li>Open any website in a normal tab.</li>
+            <li>Click the bookmark and paste a widget script URL or full <code style={styles.code}>&lt;script&gt;</code> tag.</li>
+          </ol>
+        </details>
+
         <div style={styles.extBadge}>
           {extInstalled ? (
             <span style={styles.extBadgeOk}>● Extension installed — works on every site</span>
@@ -316,14 +329,22 @@ function buildBookmarklet(scriptUrl: string): string {
   return 'javascript:' + encodeURIComponent(code)
 }
 
+// Asks for the widget on click, so one bookmark works for any site/widget combo.
+// A full <script> tag is inserted as-is (keeps data-* config and inline code);
+// a bare URL becomes a plain <script src>. Last input is remembered per site.
+function buildUniversalBookmarklet(): string {
+  const code = String.raw`(()=>{const k='wwc-last-widget';let d='';try{d=localStorage.getItem(k)||''}catch(e){}const v=(prompt('Paste the widget script URL or <script> tag:',d)||'').trim();if(!v)return;try{localStorage.setItem(k,v)}catch(e){}try{if(/<script/i.test(v)){document.body.appendChild(document.createRange().createContextualFragment(v));return}if(!/^https?:\/\//i.test(v)){alert('Not a script URL: '+v);return}const s=document.createElement('script');s.src=v;s.async=true;document.body.appendChild(s)}catch(e){alert('Could not inject widget: '+e.message)}})();`
+  return 'javascript:' + encodeURIComponent(code)
+}
+
 function escapeAttr(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-function buildBookmarkletAnchorHtml(scriptUrl: string): string {
-  const href = escapeAttr(buildBookmarklet(scriptUrl))
+function buildBookmarkletAnchorHtml(bookmarklet: string, label: string): string {
+  const href = escapeAttr(bookmarklet)
   const style = 'display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:700;text-decoration:none;cursor:grab;box-shadow:0 4px 16px rgba(99,102,241,0.3);user-select:none;font-family:inherit;'
-  return `<a href="${href}" style="${style}" onclick="event.preventDefault();return false;" draggable="true">⚡ Inject Widget</a>`
+  return `<a href="${href}" style="${style}" onclick="event.preventDefault();return false;" draggable="true">${label}</a>`
 }
 
 // ---- Widget position offset (?up= &down= &left= &right=, in pixels) ----
@@ -475,11 +496,16 @@ function PreviewScreen({ siteUrl, scriptUrl }: { siteUrl: string; scriptUrl: str
                   <li>Drag this button to your bookmarks bar:</li>
                   <li
                     style={{ marginTop: 10, marginBottom: 10, listStyle: 'none', marginLeft: -20 }}
-                    dangerouslySetInnerHTML={{ __html: buildBookmarkletAnchorHtml(scriptUrl) }}
+                    dangerouslySetInnerHTML={{ __html: buildBookmarkletAnchorHtml(buildBookmarklet(scriptUrl), '⚡ Inject Widget') }}
                   />
                   <li>Open <a href={siteUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#a5b4fc' }}>{siteUrl}</a> in a new tab.</li>
                   <li>Click the bookmarklet — your widget will load on the real page.</li>
                 </ol>
+                <p style={styles.bookmarkletAlt}>
+                  Testing other widgets too? Drag{' '}
+                  <span dangerouslySetInnerHTML={{ __html: buildBookmarkletAnchorHtml(buildUniversalBookmarklet(), '⚡ Inject Any Widget') }} />
+                  {' '}instead — it asks which widget to load each time you click it.
+                </p>
               </div>
             )}
 
@@ -883,6 +909,15 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 13,
     color: 'rgba(255,255,255,0.6)',
     lineHeight: 1.7,
+  },
+  bookmarkletAlt: {
+    margin: 0,
+    marginTop: 16,
+    paddingTop: 14,
+    borderTop: '1px solid rgba(255,255,255,0.08)',
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.5)',
+    lineHeight: 2.6,
   },
   bookmarkletDrag: {
     display: 'inline-flex',
